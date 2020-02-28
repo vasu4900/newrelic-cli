@@ -45,22 +45,8 @@ type Config struct {
 	LogLevel      string `mapstructure:"logLevel"`      // LogLevel for verbose output
 	PluginDir     string `mapstructure:"pluginDir"`     // PluginDir is the directory where plugins will be installed
 	SendUsageData string `mapstructure:"sendUsageData"` // SendUsageData enables sending usage statistics to New Relic
-}
 
-// Value represents an instance of a configuration field.
-type Value struct {
-	Name    string
-	Value   interface{}
-	Default interface{}
-}
-
-// IsDefault returns true if the field's value is the default value.
-func (c *Value) IsDefault() bool {
-	if v, ok := c.Value.(string); ok {
-		return strings.EqualFold(v, c.Default.(string))
-	}
-
-	return c.Value == c.Default
+	cfgViper *viper.Viper
 }
 
 func init() {
@@ -80,47 +66,33 @@ func init() {
 
 // LoadConfig loads the configuration from disk, or initializes a new file
 // if one doesn't currently exist.
-func LoadConfig() (*Config, error) {
-	cfg, err := load()
+func LoadConfig(configDir string) (*Config, error) {
+	log.Debug("loading config file")
+
+	cfgViper, err := readConfig(configDir)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.setLogger()
-
-	return cfg, nil
-}
-
-func getDefaultConfigDirectory() (string, error) {
-	home, err := homedir.Dir()
+	allScopes, err := unmarshalAllScopes(cfgViper)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return fmt.Sprintf("%s/.newrelic", home), nil
-}
-
-func (c *Config) setLogger() {
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp:          true,
-		TimestampFormat:        time.RFC3339,
-		DisableLevelTruncation: true,
-	})
-
-	switch level := strings.ToUpper(c.LogLevel); level {
-	case "TRACE":
-		log.SetLevel(log.TraceLevel)
-		log.SetReportCaller(true)
-	case "DEBUG":
-		log.SetLevel(log.DebugLevel)
-		log.SetReportCaller(true)
-	case "WARN":
-		log.SetLevel(log.WarnLevel)
-	case "ERROR":
-		log.SetLevel(log.ErrorLevel)
-	default:
-		log.SetLevel(log.InfoLevel)
+	config, ok := (*allScopes)[globalScopeIdentifier]
+	if !ok {
+		config = Config{}
 	}
+
+	err = config.setDefaults()
+	if err != nil {
+		return nil, err
+	}
+
+	config.setLogger()
+	config.cfgViper = cfgViper
+
+	return &config, nil
 }
 
 // List outputs a list of all the configuration values
@@ -165,36 +137,9 @@ func (c *Config) Set(key string, value string) error {
 	return nil
 }
 
-func load() (*Config, error) {
-	log.Debug("loading config file")
-
-	cfgViper, err := readConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	allScopes, err := unmarshalAllScopes(cfgViper)
-
-	if err != nil {
-		return nil, err
-	}
-
-	config, ok := (*allScopes)[globalScopeIdentifier]
-	if !ok {
-		config = Config{}
-	}
-
-	err = config.setDefaults()
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
-
-func (c *Config) createFile(path string, cfgViper *viper.Viper) error {
+func (c *Config) createFile(path string) error {
 	c.visitAllConfigFields(func(v *Value) error {
-		cfgViper.Set(globalScopeIdentifier+"."+v.Name, v.Value.(string))
+		c.cfgViper.Set(globalScopeIdentifier+"."+v.Name, v.Value.(string))
 		return nil
 	})
 
@@ -203,7 +148,7 @@ func (c *Config) createFile(path string, cfgViper *viper.Viper) error {
 		return err
 	}
 
-	err = cfgViper.WriteConfigAs(path)
+	err = c.cfgViper.WriteConfigAs(path)
 	if err != nil {
 		return err
 	}
@@ -233,14 +178,8 @@ func (c *Config) getAll(key string) []Value {
 }
 
 func (c *Config) set(key string, value interface{}) error {
-	cfgViper, err := readConfig()
-
-	if err != nil {
-		return err
-	}
-
-	cfgViper.Set(globalScopeIdentifier+"."+key, value)
-	allScopes, err := unmarshalAllScopes(cfgViper)
+	c.cfgViper.Set(globalScopeIdentifier+"."+key, value)
+	allScopes, err := unmarshalAllScopes(c.cfgViper)
 
 	if err != nil {
 		return err
@@ -264,12 +203,12 @@ func (c *Config) set(key string, value interface{}) error {
 
 	path := fmt.Sprintf("%s/%s.%s", DefaultConfigDirectory, DefaultConfigName, DefaultConfigType)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		createErr := c.createFile(path, cfgViper)
+		createErr := c.createFile(path)
 		if createErr != nil {
 			return createErr
 		}
 	} else {
-		cfgViper.WriteConfig()
+		c.cfgViper.WriteConfig()
 	}
 
 	return nil
@@ -371,14 +310,14 @@ func unmarshalAllScopes(cfgViper *viper.Viper) (*map[string]Config, error) {
 	return &cfgMap, nil
 }
 
-func readConfig() (*viper.Viper, error) {
+func readConfig(configDir string) (*viper.Viper, error) {
 	cfgViper := viper.New()
 	cfgViper.SetEnvPrefix(DefaultEnvPrefix)
 	cfgViper.SetConfigName(DefaultConfigName)
 	cfgViper.SetConfigType(DefaultConfigType)
-	cfgViper.AddConfigPath(DefaultConfigDirectory) // adding home directory as first search path
-	cfgViper.AddConfigPath(".")                    // current directory to search path
-	cfgViper.AutomaticEnv()                        // read in environment variables that match
+	cfgViper.AddConfigPath(configDir) // adding home directory as first search path
+	cfgViper.AddConfigPath(".")       // current directory to search path
+	cfgViper.AutomaticEnv()           // read in environment variables that match
 
 	err := cfgViper.ReadInConfig()
 	if err != nil {
@@ -413,4 +352,52 @@ func stringInStrings(s string, ss []string) bool {
 	}
 
 	return false
+}
+
+func getDefaultConfigDirectory() (string, error) {
+	home, err := homedir.Dir()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s/.newrelic", home), nil
+}
+
+func (c *Config) setLogger() {
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp:          true,
+		TimestampFormat:        time.RFC3339,
+		DisableLevelTruncation: true,
+	})
+
+	switch level := strings.ToUpper(c.LogLevel); level {
+	case "TRACE":
+		log.SetLevel(log.TraceLevel)
+		log.SetReportCaller(true)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+		log.SetReportCaller(true)
+	case "WARN":
+		log.SetLevel(log.WarnLevel)
+	case "ERROR":
+		log.SetLevel(log.ErrorLevel)
+	default:
+		log.SetLevel(log.InfoLevel)
+	}
+}
+
+// Value represents an instance of a configuration field.
+type Value struct {
+	Name    string
+	Value   interface{}
+	Default interface{}
+}
+
+// IsDefault returns true if the field's value is the default value.
+func (c *Value) IsDefault() bool {
+	if v, ok := c.Value.(string); ok {
+		return strings.EqualFold(v, c.Default.(string))
+	}
+
+	return c.Value == c.Default
 }
