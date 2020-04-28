@@ -38,5 +38,6 @@ include build/release.mk
 include build/snapcraft.mk
 include build/test.mk
 include build/util.mk
+include build/protobuf.mk
 
 .PHONY: all build build-ci clean

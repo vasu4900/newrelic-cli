@@ -1,10 +1,11 @@
 package cliplugin
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -13,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 
 	proto "github.com/newrelic/newrelic-cli/internal/plugins/protoDef"
-	"github.com/newrelic/newrelic-cli/internal/plugins/shared"
 )
 
 const (
@@ -35,7 +35,7 @@ var (
 
 // Client is used for communicating with a CLI plugin.
 type Client struct {
-	client     proto.CLIClient
+	pb         proto.CLIClient
 	pluginHost *plugin.Client
 }
 
@@ -85,45 +85,25 @@ func (c *Client) Kill() {
 	c.pluginHost.Kill()
 }
 
-// Discover allows for discovery of the plugin's subcommands.
-func (c *Client) Discover() ([]*shared.CommandDefinition, error) {
-	resp, err := c.client.Discover(context.Background(), &proto.DiscoverRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	j, err := json.Marshal(resp)
-	if err != nil {
-		return nil, err
-	}
-
-	out := struct {
-		Commands []*shared.CommandDefinition
-	}{}
-
-	err = json.Unmarshal(j, &out)
-	if err != nil {
-		return nil, err
-	}
-
-	return out.Commands, nil
-}
-
 // Exec allows for executing a given subcommand.
-func (c *Client) Exec(command string, args []string) (io.Reader, io.Reader, error) {
-	resp, err := c.client.Exec(context.Background(), &proto.ExecRequest{
+func (c *Client) Exec(command string, args []string) error {
+	stream, err := c.pb.Exec(context.Background())
+
+	stream.Send(&proto.ExecRequest{
 		Command: command,
 		Args:    args,
 	})
 
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
 	var stdout, stderr bytes.Buffer
 
+	go handleStdin(stream)
+
 	for {
-		chunk, err := resp.Recv()
+		chunk, err := stream.Recv()
 
 		if err == io.EOF {
 			break
@@ -134,10 +114,29 @@ func (c *Client) Exec(command string, args []string) (io.Reader, io.Reader, erro
 		}
 
 		stdout.Write(chunk.Stdout)
+		_, err = io.Copy(os.Stdout, &stdout)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		stderr.Write(chunk.Stderr)
+		_, err = io.Copy(os.Stderr, &stderr)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	return &stdout, &stderr, nil
+	return nil
+}
+
+func handleStdin(stream proto.CLI_ExecClient) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		scanner.Scan()
+		stream.Send(&proto.ExecRequest{
+			Stdin: scanner.Bytes(),
+		})
+	}
 }
 
 // CLIPlugin represents a gRPC-aware plugin powered by go-plugin.
@@ -154,5 +153,5 @@ func (p *CLIPlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Server) error 
 
 // GRPCClient creates a gRPC client for communicating with a plugin.
 func (p *CLIPlugin) GRPCClient(ctx context.Context, broker *plugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
-	return &Client{client: proto.NewCLIClient(c)}, nil
+	return &Client{pb: proto.NewCLIClient(c)}, nil
 }

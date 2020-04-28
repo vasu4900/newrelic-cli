@@ -3,7 +3,6 @@ package plugins
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/newrelic/newrelic-cli/internal/config"
 	"github.com/newrelic/newrelic-cli/internal/plugins/cliplugin"
 	"github.com/newrelic/newrelic-cli/internal/plugins/shared"
 )
@@ -196,9 +196,14 @@ func promptForString(prompt string) (string, error) {
 func runRPCCommand(p *cliPluginDefinition, cmd *cobra.Command, args []string) {
 	c := os.ExpandEnv(p.Plugin.Command)
 	parts := strings.Split(c, " ")
-	client := cliplugin.NewClient(&cliplugin.ClientOptions{
-		Command: parts[0],
-		Args:    parts[1:],
+	var client *cliplugin.Client
+
+	config.WithConfig(func(cfg *config.Config) {
+		client = cliplugin.NewClient(&cliplugin.ClientOptions{
+			Command:  parts[0],
+			Args:     parts[1:],
+			LogLevel: cfg.LogLevel,
+		})
 	})
 	defer client.Kill()
 
@@ -222,18 +227,10 @@ func runRPCCommand(p *cliPluginDefinition, cmd *cobra.Command, args []string) {
 
 	log.Tracef("command: %s %s", cmd.Name(), allArgs)
 
-	stdout, stderr, err := client.Exec(cmd.Name(), allArgs)
+	err := client.Exec(cmd.Name(), allArgs)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = io.Copy(os.Stdout, stdout)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = io.Copy(os.Stderr, stderr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	os.Exit(0)
 }

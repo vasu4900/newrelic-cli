@@ -1,32 +1,10 @@
 syntax = "proto3";
 package protoDef;
 
-message DiscoverRequest {}
-
-message DiscoverResponse {
-    repeated CommandDefinition Commands = 1;
-}
-
-message CommandFlag {
-    string Name = 1;
-    bool Required = 2;
-    string Shorthand = 3;
-    string Type = 4;
-    string Usage = 5;
-    repeated string Options = 6;
-    string Prompt = 7;
-}
-
-message CommandDefinition {
-    string Use = 1;
-    string Short = 2;
-    string Long = 3;
-    repeated CommandFlag Flags = 4;
-}
-
 message ExecRequest {
     string command = 1;
     repeated string args = 2;
+    bytes stdin = 3;
 }
 
 message ExecResponse {
@@ -35,6 +13,5 @@ message ExecResponse {
 }
 
 service CLI {
-    rpc Discover (DiscoverRequest) returns (DiscoverResponse);
-    rpc Exec (ExecRequest) returns (stream ExecResponse);
+    rpc Exec (stream ExecRequest) returns (stream ExecResponse);
 }

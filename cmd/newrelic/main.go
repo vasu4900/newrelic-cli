@@ -30,7 +30,6 @@ func init() {
 	Command.AddCommand(nerdstorage.Command)
 	Command.AddCommand(workload.Command)
 	Command.AddCommand(plugins.Command)
-
 	// Bind plugin sub-commands
 	for _, c := range plugins.PluginRootCommands {
 		Command.AddCommand(c)

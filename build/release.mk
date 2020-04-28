@@ -1,43 +1,43 @@
-RELEASE_SCRIPT ?= ./scripts/release.sh
+release_script ?= ./scripts/release.sh
 
-GOTOOLS += github.com/goreleaser/goreleaser
+gotools += github.com/goreleaser/goreleaser
 
-REL_CMD ?= goreleaser
-DIST_DIR ?= ./dist
+rel_cmd ?= goreleaser
+dist_dir ?= ./dist
 
-HOMEBREW_CMD ?= brew
-HOMEBREW_UPSTREAM ?= git@github.com:newrelic-forks/homebrew-core.git
-ARCHIVE_URL       ?= https://github.com/newrelic/$(strip $(PROJECT_NAME))/archive/v$(strip $(PROJECT_VER_TAGGED)).tar.gz
+homebrew_cmd ?= brew
+homebrew_upstream ?= git@github.com:newrelic-forks/homebrew-core.git
+archive_url       ?= https://github.com/newrelic/$(strip $(project_name))/archive/v$(strip $(project_ver_tagged)).tar.gz
 
-# Example usage: make release version=0.11.0
+# example usage: make release version=0.11.0
 release: build
-	@echo "=== $(PROJECT_NAME) === [ release          ]: Generating release."
-	$(RELEASE_SCRIPT) $(version)
+	@echo "=== $(project_name) === [ release          ]: generating release."
+	$(release_script) $(version)
 
 release-clean:
-	@echo "=== $(PROJECT_NAME) === [ release-clean    ]: distribution files..."
-	@rm -rfv $(DIST_DIR) $(SRCDIR)/tmp
+	@echo "=== $(project_name) === [ release-clean    ]: distribution files..."
+	@rm -rfv $(dist_dir) $(srcdir)/tmp
 
 release-publish: clean tools docker-login snapcraft-login release-notes
-	@echo "=== $(PROJECT_NAME) === [ release-publish  ]: Publishing release via $(REL_CMD)"
-	$(REL_CMD) --release-notes=$(SRCDIR)/tmp/$(RELEASE_NOTES_FILE)
+	@echo "=== $(project_name) === [ release-publish  ]: publishing release via $(rel_cmd)"
+	$(rel_cmd) --release-notes=$(srcdir)/tmp/$(release_notes_file)
 
-# Local Snapshot
+# local snapshot
 snapshot: clean tools release-notes
-	@echo "=== $(PROJECT_NAME) === [ snapshot         ]: Creating release via $(REL_CMD)"
-	@echo "=== $(PROJECT_NAME) === [ snapshot         ]:   THIS WILL NOT BE PUBLISHED!"
-	$(REL_CMD) --skip-publish --snapshot --release-notes=$(SRCDIR)/tmp/$(RELEASE_NOTES_FILE)
+	@echo "=== $(project_name) === [ snapshot         ]: creating release via $(rel_cmd)"
+	@echo "=== $(project_name) === [ snapshot         ]:   this will not be published!"
+	$(rel_cmd) --skip-publish --snapshot --release-notes=$(srcdir)/tmp/$(release_notes_file)
 
 release-homebrew:
-ifeq ($(HOMEBREW_GITHUB_API_TOKEN), "")
-	@echo "=== $(PROJECT_NAME) === [ admin-homebrew   ]: HOMEBREW_GITHUB_API_TOKEN must be set"
+ifeq ($(homebrew_github_api_token), "")
+	@echo "=== $(project_name) === [ admin-homebrew   ]: homebrew_github_api_token must be set"
 	exit 1
 endif
-ifeq ($(shell which $(HOMEBREW_CMD)), "")
-	@echo "=== $(PROJECT_NAME) === [ admin-homebrew   ]: Hombrew command '$(HOMEBREW_CMD)' not found."
+ifeq ($(shell which $(homebrew_cmd)), "")
+	@echo "=== $(project_name) === [ admin-homebrew   ]: hombrew command '$(homebrew_cmd)' not found."
 	exit 1
 endif
-	@echo "=== $(PROJECT_NAME) === [ admin-homebrew   ]: updating homebrew..."
-	@HUB_REMOTE=$(HOMEBREW_UPSTREAM) $(HOMEBREW_CMD) bump-formula-pr --url $(ARCHIVE_URL) $(PROJECT_NAME)
+	@echo "=== $(project_name) === [ admin-homebrew   ]: updating homebrew..."
+	@hub_remote=$(homebrew_upstream) $(homebrew_cmd) bump-formula-pr --url $(archive_url) $(project_name)
 
-.PHONY: release release-clean release-homebrew release-publish snapshot
+.phony: release release-clean release-homebrew release-publish snapshot
