@@ -12,6 +12,16 @@ message ExecResponse {
     bytes stderr = 2;
 }
 
+message ExecRequestSimple {
+    string command = 1;
+    repeated string args = 2;
+}
+
+message ExecResponseSimple {
+    string output = 1;
+}
+
 service CLI {
     rpc Exec (stream ExecRequest) returns (stream ExecResponse);
+    rpc ExecSimple (ExecRequestSimple) returns (ExecResponseSimple);
 }

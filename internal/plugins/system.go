@@ -1,11 +1,12 @@
 package plugins
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/manifoldco/promptui"
 	log "github.com/sirupsen/logrus"
@@ -42,19 +43,24 @@ func discoverPlugins() ([]*cliPluginDefinition, error) {
 
 	for _, f := range files {
 		if f.IsDir() {
-			file := pluginLocation + "/" + f.Name() + "/plugin.json"
+			file := pluginLocation + "/" + f.Name() + "/plugin.yml"
 			dat, err := ioutil.ReadFile(file)
 			if err != nil {
 				return nil, err
 			}
 
-			var plugin *cliPluginDefinition
+			var plugin cliPluginDefinition
 
-			err = json.Unmarshal(dat, &plugin)
+			err = yaml.Unmarshal(dat, &plugin)
 			if err != nil {
 				return nil, err
 			}
-			plugins = append(plugins, plugin)
+
+			fmt.Print("\n\n **************************** \n")
+			fmt.Printf("\n plugin:  %+v \n", plugin)
+			fmt.Print("\n **************************** \n\n")
+
+			plugins = append(plugins, &plugin)
 		}
 	}
 
@@ -227,7 +233,24 @@ func runRPCCommand(p *cliPluginDefinition, cmd *cobra.Command, args []string) {
 
 	log.Tracef("command: %s %s", cmd.Name(), allArgs)
 
-	err := client.Exec(cmd.Name(), allArgs)
+	var thisCmd shared.CommandDefinition
+	for _, c := range p.Commands {
+		if cmd.Name() == c.Use {
+			thisCmd = *c
+			break
+		}
+	}
+
+	var err error
+	if !thisCmd.Interactive {
+		resp, _ := client.ExecSimple(cmd.Name(), allArgs)
+
+		fmt.Print(resp)
+
+	} else {
+		err = client.Exec(cmd.Name(), allArgs)
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package cliplugin
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -83,6 +84,8 @@ func NewClient(opts *ClientOptions) *Client {
 
 // Kill ends the plugin host process and cleans up remaining resources.
 func (c *Client) Kill() {
+	fmt.Println("KILL...")
+
 	c.pluginHost.Kill()
 }
 
@@ -134,6 +137,27 @@ func (c *Client) Exec(command string, args []string) error {
 	close(errCh)
 
 	return nil
+}
+
+// Exec allows for executing a given subcommand.
+func (c *Client) ExecSimple(command string, args []string) (string, error) {
+	execReqSimple := proto.ExecRequestSimple{
+		Command: command,
+		Args:    args,
+	}
+
+	fmt.Println("ExecSimple...................................")
+
+	resp, err := c.pb.ExecSimple(context.Background(), &execReqSimple)
+
+	fmt.Printf("ExecSimple Resp: %+v \n", resp)
+	fmt.Printf("ExecSimple Error: %+v \n", err)
+
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Output, nil
 }
 
 func handleStdin(stream proto.CLI_ExecClient) {

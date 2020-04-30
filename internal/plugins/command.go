@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	pluginLocation = "/Users/ctrombley/.newrelic/plugins"
+	pluginLocation = "/Users/sblue/.newrelic/plugins"
 )
 
 var (
@@ -27,12 +27,12 @@ var (
 
 type cliPluginDefinition struct {
 	Plugin struct {
-		Command string
-		Name    string
-		Short   string
-		Long    string
-	}
-	Commands []*shared.CommandDefinition
+		Command string `yaml:"Command,omitempty"`
+		Name    string `yaml:"Name,omitempty"`
+		Short   string `yaml:"Short,omitempty"`
+		Long    string `yaml:"Long,omitempty"`
+	} `yaml:"Plugin,omitempty"`
+	Commands []*shared.CommandDefinition `yaml:"Commands,omitempty"`
 }
 
 // Command represent the root plugins CLI subcommand.
